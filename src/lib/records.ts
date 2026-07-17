@@ -74,12 +74,10 @@ export function buildRecords(
         dayType: dayTypeForDate(date),
         otType: entry.otType,
         plannedHours: hours,
-        actualHours: null,
         baseRate: emp.baseRate,
         status: 'draft',
-        outcome: null,
-        payableHours: null,
-        excessResolution: null,
+        actualHours: null,
+        payableHours: hours, // deferred reconcile: approved = payable
       });
     }
   }

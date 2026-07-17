@@ -18,8 +18,7 @@ import type { OvertimeRecord } from '../types';
 const LEGEND: { label: string; cls: string }[] = [
   { label: 'Draft', cls: 'border border-dashed border-app-line' },
   { label: 'Pending', cls: 'bg-warn-bg' },
-  { label: 'Approved / reconciling', cls: 'bg-accent-bg' },
-  { label: 'Settled', cls: 'bg-ok-bg' },
+  { label: 'Approved', cls: 'bg-accent-bg' },
 ];
 
 export const SchedulerPage = () => {
@@ -88,8 +87,8 @@ export const SchedulerPage = () => {
       />
 
       <p className="text-11 text-app-faint">
-        OT chips reflect their plan's live status. Approving a plan turns its chips violet; settling a
-        period locks them and shows planned→actual.
+        OT chips reflect their plan's live status. Approving a plan turns its chips violet; approved
+        overtime then posts to Sheets & Settlements for payroll.
       </p>
     </div>
   );

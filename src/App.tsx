@@ -7,8 +7,10 @@ import { PlanOvertimeListPage } from './pages/PlanOvertimeListPage';
 import { PlanCreatePage } from './pages/PlanCreatePage';
 import { PlanSummaryPage } from './pages/PlanSummaryPage';
 import { ApprovalsPage } from './pages/ApprovalsPage';
-import { ReconciliationPage } from './pages/ReconciliationPage';
 import { ShiftSettingsPage } from './pages/ShiftSettingsPage';
+import { SheetsPage } from './pages/SheetsPage';
+import { AttendanceTrackerPage } from './pages/AttendanceTrackerPage';
+import { LeaveTrackerPage } from './pages/LeaveTrackerPage';
 
 // Strip the trailing slash that Vite's BASE_URL always carries so React Router accepts it.
 const basename = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -28,9 +30,13 @@ const App = () => (
             <Route path="scheduler" element={<SchedulerPage />} />
             <Route path="plan-overtime" element={<PlanOvertimeListPage />} />
             <Route path="approvals" element={<ApprovalsPage />} />
-            <Route path="reconciliation" element={<ReconciliationPage />} />
             <Route path="settings" element={<ShiftSettingsPage />} />
           </Route>
+
+          {/* Sibling pages under the Attendance & Leave nav group */}
+          <Route path="/sheets" element={<SheetsPage />} />
+          <Route path="/attendance-tracker" element={<AttendanceTrackerPage />} />
+          <Route path="/leave-tracker" element={<LeaveTrackerPage />} />
         </Route>
       </Routes>
     </Router>

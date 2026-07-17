@@ -1,7 +1,7 @@
-// Seed data for the OT planning prototype.
-// "Today" is anchored at 2026-07-15 (Wed). Seed plans cover EVERY status
-// (draft · pending · approved · reconciling · settled · rejected) plus a settled
-// period and an excess record so the Scheduler / Approvals / Reconciliation demos all light up.
+// Seed data for the OT planning prototype (Plan → Approve).
+// "Today" is anchored at 2026-07-15 (Wed). Seed plans cover every status
+// (draft · pending · approved · rejected). Approved plans + approved requests
+// post to the Sheets & Settlements "Approved overtime" columns.
 
 import type {
   CostCentre,
@@ -10,10 +10,11 @@ import type {
   OTPolicy,
   OvertimePlan,
   OvertimeRecord,
+  OvertimeRequest,
   Shift,
+  SheetMock,
 } from '../types';
 import { dayTypeForDate } from '../lib/records';
-import { reconcileRecord } from '../lib/reconcile';
 
 export const TODAY_ISO = '2026-07-15';
 
@@ -70,48 +71,35 @@ type RecInput = {
   plannedHours: number;
   otType?: 'paid' | 'toil';
   status: OvertimeRecord['status'];
-  actualHours?: number | null;
-  /** When true, fills payableHours + outcome via the reconcile engine (used for settled records). */
-  reconciled?: boolean;
 };
 
-const mk = (i: RecInput): OvertimeRecord => {
-  const base: OvertimeRecord = {
-    id: `otr-seed-${++seq}`,
-    planId: i.planId,
-    employeeId: i.employeeId,
-    date: i.date,
-    shiftId: i.shiftId,
-    dayType: dayTypeForDate(i.date),
-    otType: i.otType ?? 'paid',
-    plannedHours: i.plannedHours,
-    actualHours: i.actualHours ?? null,
-    baseRate: rateOf(i.employeeId),
-    status: i.status,
-    outcome: null,
-    payableHours: null,
-    excessResolution: null,
-  };
-  if (i.reconciled) {
-    const line = reconcileRecord(base);
-    base.payableHours = line.payable;
-    base.outcome = line.outcome;
-  }
-  return base;
-};
+const mk = (i: RecInput): OvertimeRecord => ({
+  id: `otr-seed-${++seq}`,
+  planId: i.planId,
+  employeeId: i.employeeId,
+  date: i.date,
+  shiftId: i.shiftId,
+  dayType: dayTypeForDate(i.date),
+  otType: i.otType ?? 'paid',
+  plannedHours: i.plannedHours,
+  baseRate: rateOf(i.employeeId),
+  status: i.status,
+  actualHours: null,
+  payableHours: i.plannedHours,
+});
 
-// ── P1 · Settled — Warehouse peak, early July (past week of Jul 5) ──────────────
+// ── P1 · Approved — Warehouse peak, early July (past week of Jul 5) ─────────────
 const p1Records: OvertimeRecord[] = [
-  mk({ planId: 'p1', employeeId: 'e1', date: '2026-07-06', shiftId: 'sh-morning', plannedHours: 3, status: 'settled', actualHours: 3, reconciled: true }),
-  mk({ planId: 'p1', employeeId: 'e2', date: '2026-07-07', shiftId: 'sh-morning', plannedHours: 4, status: 'settled', actualHours: 3, reconciled: true }),
-  mk({ planId: 'p1', employeeId: 'e3', date: '2026-07-08', shiftId: 'sh-morning', plannedHours: 2, status: 'settled', actualHours: 2, reconciled: true }),
+  mk({ planId: 'p1', employeeId: 'e1', date: '2026-07-06', shiftId: 'sh-morning', plannedHours: 3, status: 'approved' }),
+  mk({ planId: 'p1', employeeId: 'e2', date: '2026-07-07', shiftId: 'sh-morning', plannedHours: 4, status: 'approved' }),
+  mk({ planId: 'p1', employeeId: 'e3', date: '2026-07-08', shiftId: 'sh-morning', plannedHours: 2, otType: 'toil', status: 'approved' }),
 ];
 
-// ── P2 · Reconciling — Coverage gap Jul 9–10, attendance in, one excess ─────────
+// ── P2 · Approved — Coverage gap Jul 9–10 ───────────────────────────────────────
 const p2Records: OvertimeRecord[] = [
-  mk({ planId: 'p2', employeeId: 'e1', date: '2026-07-09', shiftId: 'sh-evening', plannedHours: 3, status: 'reconciling', actualHours: 5 }), // excess (held 2)
-  mk({ planId: 'p2', employeeId: 'e2', date: '2026-07-09', shiftId: 'sh-evening', plannedHours: 3, status: 'reconciling', actualHours: 2 }), // short
-  mk({ planId: 'p2', employeeId: 'e4', date: '2026-07-10', shiftId: 'sh-night', plannedHours: 4, status: 'reconciling', actualHours: 4 }), // match (rest day 2×)
+  mk({ planId: 'p2', employeeId: 'e1', date: '2026-07-09', shiftId: 'sh-evening', plannedHours: 3, status: 'approved' }),
+  mk({ planId: 'p2', employeeId: 'e2', date: '2026-07-09', shiftId: 'sh-evening', plannedHours: 3, status: 'approved' }),
+  mk({ planId: 'p2', employeeId: 'e4', date: '2026-07-10', shiftId: 'sh-night', plannedHours: 4, status: 'approved' }),
 ];
 
 // ── P3 · Pending approval — Project deadline sprint (current week Jul 12–16) ─────
@@ -156,7 +144,7 @@ export const seedPlans: OvertimePlan[] = [
     period: { kind: 'range', start: '2026-07-05', end: '2026-07-09' },
     costCentreId: 'cc-ops',
     note: 'Ramadan restock backlog clearance.',
-    status: 'settled',
+    status: 'approved',
     recordIds: p1Records.map((r) => r.id),
     submittedBy: 'Mohammed Saleh',
     approvalStep: 'Finance → Top management',
@@ -169,7 +157,7 @@ export const seedPlans: OvertimePlan[] = [
     period: { kind: 'range', start: '2026-07-09', end: '2026-07-10' },
     costCentreId: 'cc-ops',
     note: 'Two dispatch agents on annual leave.',
-    status: 'reconciling',
+    status: 'approved',
     recordIds: p2Records.map((r) => r.id),
     submittedBy: 'Lina Hassan',
     approvalStep: 'Finance → Top management',
@@ -223,4 +211,44 @@ export const seedPlans: OvertimePlan[] = [
     approvalStep: 'Finance → Top management',
     rejectComment: 'Covered by existing on-call rota — no extra OT approved.',
   },
+];
+
+// ── Unplanned OT requests (the exception lane) — pending, awaiting approval ──────
+export const seedRequests: OvertimeRequest[] = [
+  {
+    id: 'req-seed-1',
+    employeeId: 'e6',
+    date: '2026-07-11',
+    durationH: 1,
+    rateMultiplier: otPolicy.normalMultiplier,
+    otType: 'paid',
+    status: 'pending',
+    approverId: 'e5',
+    approverName: 'Mohammed Saleh',
+    requestedOn: '2026-07-12',
+    captureSource: 'punch',
+  },
+  {
+    id: 'req-seed-2',
+    employeeId: 'e2',
+    date: '2026-07-14',
+    durationH: 2,
+    rateMultiplier: otPolicy.normalMultiplier,
+    otType: 'paid',
+    status: 'pending',
+    approverId: 'e5',
+    approverName: 'Mohammed Saleh',
+    requestedOn: '2026-07-15',
+    captureSource: 'punch',
+  },
+];
+
+// Per-employee mock figures for the non-OT sheet column groups (production context).
+export const sheetMock: SheetMock[] = [
+  { employeeId: 'e1', leaveDays: 0, scheduledDur: 176, workedDur: 174, diff: -2, absence: 0 },
+  { employeeId: 'e2', leaveDays: 1, scheduledDur: 168, workedDur: 168, diff: 0, absence: 0 },
+  { employeeId: 'e3', leaveDays: 0, scheduledDur: 176, workedDur: 176, diff: 0, absence: 0 },
+  { employeeId: 'e4', leaveDays: 2, scheduledDur: 160, workedDur: 158, diff: -2, absence: 1 },
+  { employeeId: 'e5', leaveDays: 0, scheduledDur: 176, workedDur: 180, diff: 4, absence: 0 },
+  { employeeId: 'e6', leaveDays: 0, scheduledDur: 176, workedDur: 172, diff: -4, absence: 0 },
 ];

@@ -74,7 +74,7 @@ export const PlanCreatePage = () => {
   const conflicts = useMemo(() => {
     const set = new Set<string>();
     for (const r of Object.values(records)) {
-      if (['pending', 'approved', 'reconciling'].includes(r.status)) set.add(r.employeeId);
+      if (r.status === 'pending' || r.status === 'approved') set.add(r.employeeId);
     }
     return set;
   }, [records]);
@@ -227,7 +227,7 @@ export const PlanCreatePage = () => {
                             setRecWeekdays((prev) => (on ? prev.filter((d) => d !== i) : [...prev, i].sort()))
                           }
                           className={[
-                            'px-2.5 py-1 rounded-lg text-13 border transition',
+                            'px-2.5 py-1 rounded-lg text-13 border transition focus-ring',
                             on
                               ? 'bg-app-ink text-white border-app-ink dark:bg-app-ink-dark dark:text-app-bg'
                               : 'bg-white dark:bg-app-card-dark border-app-line text-app-mute hover:text-app-ink',
@@ -266,7 +266,7 @@ export const PlanCreatePage = () => {
                       type="button"
                       onClick={() => setReason(r)}
                       className={[
-                        'px-2.5 py-1.5 rounded-lg text-13 border transition',
+                        'px-2.5 py-1.5 rounded-lg text-13 border transition focus-ring',
                         reason === r
                           ? 'bg-app-ink text-white border-app-ink dark:bg-app-ink-dark dark:text-app-bg'
                           : 'bg-white dark:bg-app-card-dark border-app-line text-app-mute hover:text-app-ink',

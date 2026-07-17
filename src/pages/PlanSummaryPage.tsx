@@ -37,7 +37,6 @@ export const PlanSummaryPage = () => {
   const empById = new Map(employees.map((e) => [e.id, e]));
   const costCentre = costCentres.find((c) => c.id === plan.costCentreId);
   const budget = policy.budgets.find((b) => b.costCentreId === plan.costCentreId);
-  const showActual = plan.status === 'reconciling' || plan.status === 'settled';
 
   const columns: TableColumn<OvertimeRecord>[] = [
     {
@@ -61,22 +60,6 @@ export const PlanSummaryPage = () => {
       ),
     },
     { key: 'planned', header: 'Planned', align: 'right', render: (r) => fmtH(r.plannedHours) },
-    ...(showActual
-      ? [
-          {
-            key: 'actual',
-            header: 'Actual',
-            align: 'right' as const,
-            render: (r: OvertimeRecord) => (r.actualHours == null ? '—' : fmtH(r.actualHours)),
-          },
-          {
-            key: 'payable',
-            header: 'Payable',
-            align: 'right' as const,
-            render: (r: OvertimeRecord) => (r.payableHours == null ? '—' : fmtH(r.payableHours)),
-          },
-        ]
-      : []),
     {
       key: 'type',
       header: 'Type',

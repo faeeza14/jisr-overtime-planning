@@ -46,13 +46,8 @@ export const ShiftSettingsPage = () => {
           />
           <Row
             title="Overtime planner"
-            description="Centrally plan OT against budget. Off → the Plan Overtime, Approvals and Reconciliation tabs are hidden and shifts publish directly."
+            description="Centrally plan OT against budget. Off → the Plan Overtime and Approvals tabs are hidden and shifts publish directly."
             control={toggle('overtimePlanner')}
-          />
-          <Row
-            title="Attendance reconciliation"
-            description="Compare approved OT to actual attendance before settling to payroll."
-            control={toggle('attendanceReconciliation')}
           />
         </Card>
         {!features.overtimePlanner && (

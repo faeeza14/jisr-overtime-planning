@@ -1,7 +1,6 @@
 // Derived views over the store — pure functions so screens stay thin.
 
 import type { OTPolicy, OvertimePlan, OvertimeRecord, PlanStatus } from '../types';
-import { reconcileRecord } from '../lib/reconcile';
 import { cost } from '../lib/cost';
 import { parseIsoLocal } from '../lib/weekly';
 
@@ -57,7 +56,7 @@ export const planStats = (
   refDate: string,
 ): PlanStats => {
   const planList = Object.values(plans);
-  const active = planList.filter((p) => ['pending', 'approved', 'reconciling'].includes(p.status)).length;
+  const active = planList.filter((p) => p.status === 'pending' || p.status === 'approved').length;
   const pending = planList.filter((p) => p.status === 'pending').length;
   const monthHours = Object.values(records)
     .filter((r) => r.status !== 'rejected' && r.status !== 'draft' && isSameMonth(r.date, refDate))
@@ -75,11 +74,3 @@ export const plansByStatus = (
   plans: Record<string, OvertimePlan>,
   status: PlanStatus,
 ): OvertimePlan[] => Object.values(plans).filter((p) => p.status === status);
-
-/** Excess records awaiting a decision (outcome excess, not yet resolved). */
-export const excessRecords = (records: Record<string, OvertimeRecord>): OvertimeRecord[] =>
-  Object.values(records).filter((r) => {
-    if (r.actualHours == null) return false;
-    const line = reconcileRecord(r);
-    return line.outcome === 'excess' && r.excessResolution == null && r.status !== 'draft';
-  });

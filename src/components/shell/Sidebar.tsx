@@ -9,7 +9,6 @@ import {
   Inbox,
   Lock,
   CalendarClock,
-  ClipboardList,
   Wallet,
   TrendingUp,
   Star,
@@ -52,15 +51,15 @@ export const Sidebar = ({ onNavigate }: { onNavigate?: () => void }) => {
           heading: 'Core HR',
           items: [
             {
-              label: 'Attendance',
+              label: 'Attendance & Leave',
               icon: icon(<CalendarClock />),
               children: [
+                { label: 'Attendance Tracker', to: '/attendance-tracker' },
                 { label: 'Shifts & scheduling', to: '/shifts/scheduler' },
-                { label: 'Attendance policies', to: '/na/policies' },
-                { label: 'Tracking methods', to: '/na/tracking' },
+                { label: 'Leave Tracker', to: '/leave-tracker' },
+                { label: 'Sheets & Settlements', to: '/sheets' },
               ],
             },
-            { label: 'Leave', icon: icon(<ClipboardList />) },
             { label: 'Payroll', icon: icon(<Wallet />) },
           ],
         },

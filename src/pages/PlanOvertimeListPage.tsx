@@ -15,8 +15,6 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'draft', label: 'Draft' },
   { key: 'pending', label: 'Pending' },
   { key: 'approved', label: 'Approved' },
-  { key: 'reconciling', label: 'Reconciling' },
-  { key: 'settled', label: 'Settled' },
 ];
 
 export const PlanOvertimeListPage = () => {
@@ -68,10 +66,10 @@ export const PlanOvertimeListPage = () => {
                 type="button"
                 onClick={() => setFilter(f.key)}
                 className={[
-                  'px-2.5 py-1 rounded-full text-11 font-medium border transition',
+                  'px-2.5 py-1 rounded-full text-11 font-medium border transition focus-ring',
                   filter === f.key
                     ? 'bg-app-ink text-white border-app-ink dark:bg-app-ink-dark dark:text-app-bg'
-                    : 'bg-white dark:bg-app-card-dark text-app-mute border-app-line dark:border-app-line-dark hover:text-app-ink',
+                    : 'bg-white dark:bg-app-card-dark text-app-mute border-app-line dark:border-app-line-dark hover:text-app-ink hover:border-app-faint',
                 ].join(' ')}
               >
                 {f.label}

@@ -1,7 +1,6 @@
-// Scheduler OT chip — status-aware (brief §6 reflection table).
-// draft: grey dashed · pending: amber · approved/reconcile: violet · settled: green + lock.
+// Scheduler OT chip — status-aware (Plan → Approve). Chips stop at approved.
+// draft: grey dashed · pending: amber · approved: violet.
 
-import { Lock } from 'lucide-react';
 import type { OvertimeRecord } from '../../types';
 import { fmtH } from '../../lib/format';
 
@@ -12,10 +11,7 @@ const styleFor = (r: OvertimeRecord): string => {
     case 'pending':
       return 'bg-warn-bg text-warn-ink dark:bg-warn-bg-dark dark:text-warn-ink-dark';
     case 'approved':
-    case 'reconciling':
       return 'bg-accent-bg text-accent-ink dark:bg-accent-bg-dark dark:text-accent-ink-dark';
-    case 'settled':
-      return 'bg-ok-bg text-ok-ink dark:bg-ok-bg-dark dark:text-ok-ink-dark';
     case 'rejected':
       return 'bg-danger-bg text-danger-ink dark:bg-danger-bg-dark dark:text-danger-ink-dark line-through';
     default:
@@ -23,26 +19,7 @@ const styleFor = (r: OvertimeRecord): string => {
   }
 };
 
-const labelFor = (r: OvertimeRecord): string => {
-  switch (r.status) {
-    case 'draft':
-      return `+${fmtH(r.plannedHours)} · draft`;
-    case 'pending':
-      return `+${fmtH(r.plannedHours)} · pending`;
-    case 'approved':
-      return `+${fmtH(r.plannedHours)} · approved`;
-    case 'reconciling':
-      return `+${fmtH(r.plannedHours)} · to reconcile`;
-    case 'settled': {
-      const actual = r.actualHours ?? r.plannedHours;
-      return `${fmtH(r.plannedHours)}→${fmtH(actual)} · paid`;
-    }
-    case 'rejected':
-      return `+${fmtH(r.plannedHours)} · rejected`;
-    default:
-      return `+${fmtH(r.plannedHours)}`;
-  }
-};
+const labelFor = (r: OvertimeRecord): string => `+${fmtH(r.plannedHours)} · ${r.status}`;
 
 export const OTChip = ({
   record,
@@ -57,11 +34,10 @@ export const OTChip = ({
     title={labelFor(record)}
     className={[
       'inline-flex items-center gap-1 w-full rounded-md px-1.5 py-0.5 text-[10px] font-medium truncate transition',
+      'cursor-pointer hover:opacity-80 focus-ring',
       styleFor(record),
-      record.status === 'settled' ? 'cursor-default' : 'cursor-pointer hover:opacity-80',
     ].join(' ')}
   >
     <span className="truncate">{labelFor(record)}</span>
-    {record.status === 'settled' && <Lock className="size-2.5 shrink-0" />}
   </button>
 );

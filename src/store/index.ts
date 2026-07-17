@@ -9,10 +9,12 @@ import type {
   OTPolicy,
   OvertimePlan,
   OvertimeRecord,
+  OvertimeRequest,
   PlanPeriod,
   PlanReason,
   PlanType,
   Shift,
+  SheetMock,
 } from '../types';
 import {
   costCentres as seedCostCentres,
@@ -21,10 +23,11 @@ import {
   otPolicy as seedPolicy,
   seedPlans,
   seedRecords,
+  seedRequests,
+  sheetMock as seedSheetMock,
   shifts as seedShifts,
   TODAY_ISO,
 } from '../data/seed';
-import { reconcileRecord } from '../lib/reconcile';
 
 const indexById = <T extends { id: string }>(items: T[]): Record<string, T> =>
   Object.fromEntries(items.map((it) => [it.id, it]));
@@ -54,23 +57,24 @@ type OTState = {
   shifts: Shift[];
   plans: Record<string, OvertimePlan>;
   records: Record<string, OvertimeRecord>;
+  requests: Record<string, OvertimeRequest>;
+  sheetMock: SheetMock[];
   audit: AuditDelta[];
   features: FeatureConfig;
   ui: { currentDate: string };
 
-  // lifecycle
+  // plan lifecycle (Plan → Approve)
   createDraftPlan: (input: CreatePlanInput) => string;
   updateDraftPlan: (id: string, patch: Partial<CreatePlanInput>) => void;
   setPlanRecords: (planId: string, records: OvertimeRecord[]) => void;
   submitForApproval: (planId: string) => void;
   approvePlan: (planId: string, edits?: RecordEdit[]) => void;
   rejectPlan: (planId: string, comment: string) => void;
-  startReconciling: (planId: string) => void;
-  settlePeriod: (planId: string) => void;
 
-  // record-level
-  setActualHours: (recordId: string, hrs: number) => void;
-  resolveExcess: (recordId: string, decision: 'approve' | 'reject') => void;
+  // unplanned OT request lane (posts to the sheet on approve)
+  approveRequest: (requestId: string) => void;
+  rejectRequest: (requestId: string) => void;
+  captureRequest: () => string; // demo: capture an unplanned OT from a punch
 
   // config
   setFeature: (key: keyof FeatureConfig, on: boolean) => void;
@@ -95,11 +99,12 @@ export const useOTStore = create<OTState>((set) => ({
   shifts: seedShifts,
   plans: indexById(seedPlans),
   records: indexById(seedRecords),
+  requests: indexById(seedRequests),
+  sheetMock: seedSheetMock,
   audit: [],
   features: {
     shiftScheduleApproval: true,
     overtimePlanner: true,
-    attendanceReconciliation: true,
   },
   ui: { currentDate: TODAY_ISO },
 
@@ -174,10 +179,12 @@ export const useOTStore = create<OTState>((set) => ({
             by: CURRENT_USER,
             at: tsNow(),
           });
-          records[edit.recordId] = { ...r, plannedHours: edit.plannedHours };
+          // Deferred reconcile: approved hours are payable as-is.
+          records[edit.recordId] = { ...r, plannedHours: edit.plannedHours, payableHours: edit.plannedHours };
         }
       }
-      for (const id of plan.recordIds) if (records[id]) records[id] = { ...records[id], status: 'approved' };
+      for (const id of plan.recordIds)
+        if (records[id]) records[id] = { ...records[id], status: 'approved' };
       return { records, audit, plans: { ...s.plans, [planId]: { ...plan, status: 'approved' } } };
     }),
 
@@ -191,69 +198,40 @@ export const useOTStore = create<OTState>((set) => ({
       };
     }),
 
-  // Move an approved plan into reconciliation. In the prototype, attendance is mocked:
-  // records without an actual default to their planned hours so they are reconcilable.
-  startReconciling: (planId) =>
+  // Approving an unplanned request posts it to the sheet's Approved-overtime columns.
+  approveRequest: (requestId) =>
     set((s) => {
-      const plan = s.plans[planId];
-      if (!plan) return s;
-      const records = { ...s.records };
-      for (const id of plan.recordIds) {
-        const r = records[id];
-        if (!r) continue;
-        records[id] = {
-          ...r,
-          status: 'reconciling',
-          actualHours: r.actualHours ?? r.plannedHours,
-        };
-      }
-      return { records, plans: { ...s.plans, [planId]: { ...plan, status: 'reconciling' } } };
+      const req = s.requests[requestId];
+      if (!req) return s;
+      return { requests: { ...s.requests, [requestId]: { ...req, status: 'approved' } } };
     }),
 
-  // Reflection #2 — settling computes payable/outcome, locks records → Scheduler chips lock.
-  settlePeriod: (planId) =>
+  rejectRequest: (requestId) =>
     set((s) => {
-      const plan = s.plans[planId];
-      if (!plan) return s;
-      const records = { ...s.records };
-      for (const id of plan.recordIds) {
-        const r = records[id];
-        if (!r) continue;
-        const line = reconcileRecord(r);
-        // If an excess was explicitly approved, pay the full actual; otherwise cap at approved.
-        const payable = r.excessResolution === 'approved' ? line.actual : line.payable;
-        records[id] = {
-          ...r,
-          status: 'settled',
-          outcome: line.outcome,
-          payableHours: payable,
-        };
-      }
-      return { records, plans: { ...s.plans, [planId]: { ...plan, status: 'settled' } } };
+      const req = s.requests[requestId];
+      if (!req) return s;
+      return { requests: { ...s.requests, [requestId]: { ...req, status: 'rejected' } } };
     }),
 
-  setActualHours: (recordId, hrs) =>
-    set((s) => {
-      const r = s.records[recordId];
-      if (!r) return s;
-      return { records: { ...s.records, [recordId]: { ...r, actualHours: hrs } } };
-    }),
-
-  // Reflection #3 — approve/reject excess updates only that record's payable; settled bases untouched.
-  resolveExcess: (recordId, decision) =>
-    set((s) => {
-      const r = s.records[recordId];
-      if (!r) return s;
-      const line = reconcileRecord(r);
-      const resolution = decision === 'approve' ? 'approved' : 'rejected';
-      const payable = decision === 'approve' ? line.actual : line.payable;
-      return {
-        records: {
-          ...s.records,
-          [recordId]: { ...r, excessResolution: resolution, payableHours: payable, outcome: line.outcome },
-        },
-      };
-    }),
+  // Demo: capture an unplanned OT from a punch → a new pending request in the queue.
+  captureRequest: () => {
+    const id = `req-${nanoid(6)}`;
+    const req: OvertimeRequest = {
+      id,
+      employeeId: 'e3',
+      date: TODAY_ISO,
+      durationH: 1.5,
+      rateMultiplier: seedPolicy.normalMultiplier,
+      otType: 'paid',
+      status: 'pending',
+      approverId: 'e5',
+      approverName: 'Mohammed Saleh',
+      requestedOn: TODAY_ISO,
+      captureSource: 'punch',
+    };
+    set((s) => ({ requests: { ...s.requests, [id]: req } }));
+    return id;
+  },
 
   setFeature: (key, on) => set((s) => ({ features: { ...s.features, [key]: on } })),
 
