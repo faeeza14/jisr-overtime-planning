@@ -2,7 +2,14 @@
 // column, violet "Approved overtime" group fed live from approved records + requests.
 
 import { Avatar } from '@jisr-hr/ds-web';
-import type { Employee, OvertimePlan, OvertimeRequest, OTSource, SheetRow } from '../../types';
+import type {
+  Employee,
+  OvertimeBeyondPlan,
+  OvertimePlan,
+  OvertimeRequest,
+  OTSource,
+  SheetRow,
+} from '../../types';
 import { ProvenanceDot } from './ProvenanceDot';
 import { fmtH, fmtDayShort } from '../../lib/format';
 
@@ -10,8 +17,13 @@ const sourceTitle = (
   src: OTSource,
   plans: Record<string, OvertimePlan>,
   requests: Record<string, OvertimeRequest>,
+  beyondPlan: Record<string, OvertimeBeyondPlan>,
 ): string => {
   if (src.type === 'plan') return `Overtime plan · ${plans[src.planId]?.name ?? src.planId}`;
+  if (src.type === 'beyond_plan') {
+    const bp = beyondPlan[src.id];
+    return `Overtime beyond plan · ${bp ? fmtDayShort(bp.date) : src.id}`;
+  }
   const req = requests[src.requestId];
   return `Approved request · ${req ? fmtDayShort(req.date) : src.requestId}`;
 };
@@ -25,12 +37,14 @@ export const SheetTable = ({
   employees,
   plans,
   requests,
+  beyondPlan,
   flashEmployeeId,
 }: {
   rows: SheetRow[];
   employees: Employee[];
   plans: Record<string, OvertimePlan>;
   requests: Record<string, OvertimeRequest>;
+  beyondPlan: Record<string, OvertimeBeyondPlan>;
   flashEmployeeId?: string | null;
 }) => {
   const empById = new Map(employees.map((e) => [e.id, e]));
@@ -73,7 +87,8 @@ export const SheetTable = ({
         <tbody>
           {rows.map((row) => {
             const emp = empById.get(row.employeeId);
-            const titles = row.sources.map((s) => sourceTitle(s, plans, requests));
+            const titles = row.sources.map((s) => sourceTitle(s, plans, requests, beyondPlan));
+            const cappedUnder = row.otTotal > 0 && row.otTotal < row.otApproved; // worked under plan
             const flash = flashEmployeeId === row.employeeId;
             const otCell = [otTd, flash ? 'ring-2 ring-inset ring-ok-line bg-ok-bg/40' : ''].join(' ');
             return (
@@ -96,14 +111,26 @@ export const SheetTable = ({
                 <td className={`${td} text-app-faint`}>—</td>
                 <td className={`${td} text-app-faint`}>—</td>
                 <td className={otCell}>
-                  {row.otTotal > 0 ? (
-                    <span className="font-medium text-app-ink dark:text-app-ink-dark">
-                      {fmtH(row.otTotal)}
-                      <ProvenanceDot titles={titles} />
-                    </span>
-                  ) : (
-                    <span className="text-app-faint">—</span>
-                  )}
+                  <div className="flex flex-col items-center gap-0.5">
+                    {row.otTotal > 0 ? (
+                      <span className="font-medium text-app-ink dark:text-app-ink-dark">
+                        {fmtH(row.otTotal)}
+                        <ProvenanceDot titles={titles} />
+                      </span>
+                    ) : (
+                      <span className="text-app-faint">—</span>
+                    )}
+                    {cappedUnder && (
+                      <span className="text-[10px] text-app-faint">
+                        paid {fmtH(row.otTotal)} of {fmtH(row.otApproved)} approved
+                      </span>
+                    )}
+                    {row.excessPending > 0 && (
+                      <span className="text-[10px] font-medium text-warn-ink bg-warn-bg rounded px-1 py-px">
+                        +{fmtH(row.excessPending)} excess pending
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className={otCell}>{row.otPaid > 0 ? fmtH(row.otPaid) : <span className="text-app-faint">—</span>}</td>
                 <td className={otCell}>{row.otToil > 0 ? fmtH(row.otToil) : <span className="text-app-faint">—</span>}</td>

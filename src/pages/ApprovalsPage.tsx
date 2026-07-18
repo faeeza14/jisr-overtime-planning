@@ -18,7 +18,6 @@ import { Clock, CalendarDays, Inbox } from 'lucide-react';
 import { useOTStore } from '../store';
 import { plansByStatus, recordsForPlan, plannedHours, estCost, distinctEmployees } from '../store/selectors';
 import { HoursMatrix, type MatrixValue } from '../components/plan/HoursMatrix';
-import { BudgetMeter } from '../components/plan/BudgetMeter';
 import { recordsToMatrix, distinctDates, matrixToEdits } from '../lib/matrix';
 import { REASON_LABEL, fmtH, money, periodLabel } from '../lib/format';
 import type { OvertimePlan } from '../types';
@@ -40,7 +39,6 @@ export const ApprovalsPage = () => {
     () => employees.filter((e) => distinctEmployees(activeRecs).includes(e.id)),
     [employees, activeRecs],
   );
-  const budget = active ? policy.budgets.find((b) => b.costCentreId === active.costCentreId) : undefined;
 
   const open = (plan: OvertimePlan) => {
     setActiveId(plan.id);
@@ -123,8 +121,8 @@ export const ApprovalsPage = () => {
               <DrawerTitle>Review · {active.name}</DrawerTitle>
             </DrawerHeader>
             <DrawerBody className="!w-full">
-              <Banner appearance="info" emphasis="mid" title="Approve against budget · edit in place">
-                Adjust hours directly here. There is no send-back — approve with your edits, or reject with a comment.
+              <Banner appearance="info" emphasis="mid" title="Edit in place · approve or reject">
+                Adjust the planned hours directly here. There is no send-back — approve with your edits, or reject with a comment.
               </Banner>
 
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-13">
@@ -137,13 +135,6 @@ export const ApprovalsPage = () => {
                 <div className="text-13 bg-app-surface dark:bg-app-subtle-dark rounded-lg p-2.5 text-app-mute">
                   “{active.note}”
                 </div>
-              )}
-
-              {budget && (
-                <Card className="p-3 space-y-2">
-                  <div className="text-13 font-medium">Budget check</div>
-                  <BudgetMeter budget={budget.amount} committed={budget.committed} thisPlan={estCost(activeRecs, policy)} />
-                </Card>
               )}
 
               <div>
@@ -160,7 +151,7 @@ export const ApprovalsPage = () => {
               </Field>
             </DrawerBody>
             <DrawerFooter>
-              <Button variant="secondary" appearance="danger" onClick={doReject}>Reject</Button>
+              <Button variant="secondary" appearance="danger" onClick={doReject} disabled={!comment.trim()}>Reject</Button>
               <Button variant="primary" onClick={doApprove}>Approve with edits</Button>
             </DrawerFooter>
           </>

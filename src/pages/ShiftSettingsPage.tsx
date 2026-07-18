@@ -1,8 +1,8 @@
-import { Card, Switch, Badge, Banner } from '@jisr-hr/ds-web';
+import { Card, Switch, Badge, Banner, NumberInput, SegmentedControl } from '@jisr-hr/ds-web';
 import type { ReactNode } from 'react';
 import { useOTStore } from '../store';
 import { money } from '../lib/format';
-import type { FeatureConfig } from '../types';
+import type { ExcessConfig, FeatureConfig } from '../types';
 
 const Row = ({
   title,
@@ -27,7 +27,7 @@ const SectionTitle = ({ children }: { children: ReactNode }) => (
 );
 
 export const ShiftSettingsPage = () => {
-  const { features, setFeature, policy, costCentres } = useOTStore();
+  const { features, setFeature, policy, costCentres, excess, updateExcessConfig } = useOTStore();
 
   const toggle = (key: keyof FeatureConfig) => (
     <Switch checked={features[key]} onCheckedChange={(v) => setFeature(key, v)} />
@@ -48,6 +48,11 @@ export const ShiftSettingsPage = () => {
             title="Overtime planner"
             description="Centrally plan OT against budget. Off → the Plan Overtime and Approvals tabs are hidden and shifts publish directly."
             control={toggle('overtimePlanner')}
+          />
+          <Row
+            title="Capture overtime beyond plan"
+            description="Let attendance raise the extra hours worked over an approved plan as its own approval item."
+            control={toggle('captureBeyondPlan')}
           />
         </Card>
         {!features.overtimePlanner && (
@@ -89,9 +94,69 @@ export const ShiftSettingsPage = () => {
             </div>
           </div>
           <div className="border-t border-app-line dark:border-app-line-dark pt-3 flex items-center justify-between text-13">
-            <span className="text-app-mute">Weekly soft cap</span>
-            <Badge appearance="warning">{policy.weeklyCapSoft}h · warning only</Badge>
+            <span className="text-app-mute">Per-employee hours cap</span>
+            <Badge appearance="neutral">{policy.weeklyCapSoft}h · not enforced (this release)</Badge>
           </div>
+          <div className="border-t border-app-line dark:border-app-line-dark pt-3 flex items-center justify-between text-13">
+            <span className="text-app-mute">TOIL overtime</span>
+            <Badge appearance="info">Accrues to the leave balance, not pay</Badge>
+          </div>
+        </Card>
+      </section>
+
+      {/* Excess handling (overtime worked beyond an approved plan) */}
+      <section>
+        <SectionTitle>Excess handling · overtime beyond plan</SectionTitle>
+        <Card className="p-4 space-y-3">
+          <div>
+            <div className="text-13 font-medium text-app-ink dark:text-app-ink-dark">Who raises the excess</div>
+            <div className="text-11 text-app-mute mb-2">
+              When actual hours exceed the approved plan, the extra is never auto-paid — it gets its own approval.
+            </div>
+            <SegmentedControl<ExcessConfig['mode']>
+              value={excess.mode}
+              onChange={(v) => updateExcessConfig({ mode: v })}
+              options={[
+                { value: 'auto_create', label: 'Auto-create', description: 'Attendance raises it automatically' },
+                { value: 'employee_submits', label: 'Employee submits', description: 'The employee requests the extra' },
+              ]}
+            />
+          </div>
+          <Row
+            title="Tolerance buffer"
+            description="Ignore stray minutes over plan before raising an excess item."
+            control={
+              <NumberInput
+                value={excess.toleranceBufferMinutes}
+                onChange={(v) => updateExcessConfig({ toleranceBufferMinutes: v })}
+                min={0}
+                step={1}
+                size="sm"
+                endAddon="min"
+                className="w-28"
+              />
+            }
+          />
+          <Row
+            title="Inherits comp type"
+            description="Excess is paid or TOIL to match the plan it exceeded."
+            control={
+              <Switch
+                checked={excess.inheritsCompType}
+                onCheckedChange={(v) => updateExcessConfig({ inheritsCompType: v })}
+              />
+            }
+          />
+          <Row
+            title="Counts toward OT caps"
+            description="Approved excess hours count against the employee's OT policy caps."
+            control={
+              <Switch
+                checked={excess.countsTowardCaps}
+                onCheckedChange={(v) => updateExcessConfig({ countsTowardCaps: v })}
+              />
+            }
+          />
         </Card>
       </section>
 

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Card, Table, Avatar, Badge, SmartBreadcrumb, Banner } from '@jisr-hr/ds-web';
 import type { TableColumn } from '@jisr-hr/ds-web';
@@ -19,7 +20,8 @@ const Meta = ({ label, value }: { label: string; value: React.ReactNode }) => (
 export const PlanSummaryPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { plans, records, employees, policy, costCentres } = useOTStore();
+  const { plans, records, employees, policy, costCentres, voidApproval } = useOTStore();
+  const [confirmVoid, setConfirmVoid] = useState(false);
 
   const plan = id ? plans[id] : undefined;
   if (!plan) {
@@ -97,15 +99,52 @@ export const PlanSummaryPage = () => {
           <h1 className="text-[20px] font-semibold text-app-ink dark:text-app-ink-dark">{plan.name}</h1>
           <div className="mt-1"><StatusPill status={plan.status} /></div>
         </div>
-        {plan.status === 'draft' && (
-          <Button variant="secondary" onClick={() => navigate('/shifts/plan-overtime/new')}>
-            <Pencil className="size-3.5" /> New plan
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {plan.status === 'draft' && (
+            <Button variant="secondary" onClick={() => navigate('/shifts/plan-overtime/new')}>
+              <Pencil className="size-3.5" /> New plan
+            </Button>
+          )}
+          {plan.status === 'pending' && (
+            <Button variant="secondary" onClick={() => navigate('/shifts/approvals')}>
+              <Pencil className="size-3.5" /> Edit in Approvals
+            </Button>
+          )}
+          {plan.status === 'approved' && (
+            <Button variant="secondary" onClick={() => setConfirmVoid(true)}>
+              <Pencil className="size-3.5" /> Edit plan
+            </Button>
+          )}
+        </div>
       </div>
 
       {plan.status === 'rejected' && plan.rejectComment && (
         <Banner appearance="danger" title="Rejected">{plan.rejectComment}</Banner>
+      )}
+
+      {confirmVoid && plan.status === 'approved' && (
+        <Banner
+          appearance="warning"
+          emphasis="mid"
+          title="Editing voids the approval"
+          actions={
+            <div className="flex items-center gap-2">
+              <Button variant="tertiary" size="sm" onClick={() => setConfirmVoid(false)}>Cancel</Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  voidApproval(plan.id);
+                  navigate('/shifts/approvals');
+                }}
+              >
+                Void approval &amp; edit
+              </Button>
+            </div>
+          }
+        >
+          This plan is already approved. Editing it returns the plan and its records to Pending for re-approval.
+        </Banner>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

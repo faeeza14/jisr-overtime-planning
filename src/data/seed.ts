@@ -6,8 +6,10 @@
 import type {
   CostCentre,
   Employee,
+  ExcessConfig,
   Group,
   OTPolicy,
+  OvertimeBeyondPlan,
   OvertimePlan,
   OvertimeRecord,
   OvertimeRequest,
@@ -71,6 +73,8 @@ type RecInput = {
   plannedHours: number;
   otType?: 'paid' | 'toil';
   status: OvertimeRecord['status'];
+  actualHours?: number | null; // attendance input; null = not worked yet (future / unrecorded)
+  suppressesAutoOT?: boolean;
 };
 
 const mk = (i: RecInput): OvertimeRecord => ({
@@ -84,34 +88,38 @@ const mk = (i: RecInput): OvertimeRecord => ({
   plannedHours: i.plannedHours,
   baseRate: rateOf(i.employeeId),
   status: i.status,
-  actualHours: null,
-  payableHours: i.plannedHours,
+  actualHours: i.actualHours ?? null,
+  payableHours: i.plannedHours, // legacy denorm; the sheet derives payable = min(worked, approved)
+  suppressesAutoOT: i.suppressesAutoOT,
 });
 
 // ── P1 · Approved — Warehouse peak, early July (past week of Jul 5) ─────────────
+// Worked hours have landed → the sheet shows payable = min(worked, approved):
+//   Omar worked UNDER plan (2 of 3), Sara EXACT (4 of 4), Yousef OVER plan (3.5 of 2 → +1.5h excess).
 const p1Records: OvertimeRecord[] = [
-  mk({ planId: 'p1', employeeId: 'e1', date: '2026-07-06', shiftId: 'sh-morning', plannedHours: 3, status: 'approved' }),
-  mk({ planId: 'p1', employeeId: 'e2', date: '2026-07-07', shiftId: 'sh-morning', plannedHours: 4, status: 'approved' }),
-  mk({ planId: 'p1', employeeId: 'e3', date: '2026-07-08', shiftId: 'sh-morning', plannedHours: 2, otType: 'toil', status: 'approved' }),
+  mk({ planId: 'p1', employeeId: 'e1', date: '2026-07-06', shiftId: 'sh-morning', plannedHours: 3, status: 'approved', actualHours: 2 }),
+  mk({ planId: 'p1', employeeId: 'e2', date: '2026-07-07', shiftId: 'sh-morning', plannedHours: 4, status: 'approved', actualHours: 4 }),
+  mk({ planId: 'p1', employeeId: 'e3', date: '2026-07-08', shiftId: 'sh-morning', plannedHours: 2, otType: 'toil', status: 'approved', actualHours: 3.5 }),
 ];
 
-// ── P2 · Approved — Coverage gap Jul 9–10 ───────────────────────────────────────
+// ── P2 · Approved — Coverage gap Jul 9–10 (worked as approved) ──────────────────
 const p2Records: OvertimeRecord[] = [
-  mk({ planId: 'p2', employeeId: 'e1', date: '2026-07-09', shiftId: 'sh-evening', plannedHours: 3, status: 'approved' }),
-  mk({ planId: 'p2', employeeId: 'e2', date: '2026-07-09', shiftId: 'sh-evening', plannedHours: 3, status: 'approved' }),
-  mk({ planId: 'p2', employeeId: 'e4', date: '2026-07-10', shiftId: 'sh-night', plannedHours: 4, status: 'approved' }),
+  mk({ planId: 'p2', employeeId: 'e1', date: '2026-07-09', shiftId: 'sh-evening', plannedHours: 3, status: 'approved', actualHours: 3 }),
+  mk({ planId: 'p2', employeeId: 'e2', date: '2026-07-09', shiftId: 'sh-evening', plannedHours: 3, status: 'approved', actualHours: 3 }),
+  mk({ planId: 'p2', employeeId: 'e4', date: '2026-07-10', shiftId: 'sh-night', plannedHours: 4, status: 'approved', actualHours: 4 }),
 ];
 
 // ── P3 · Pending approval — Project deadline sprint (current week Jul 12–16) ─────
+// One record overrides automatic OT that day → chip shows "auto OT suppressed" once approved.
 const p3Records: OvertimeRecord[] = [
-  mk({ planId: 'p3', employeeId: 'e1', date: '2026-07-13', shiftId: 'sh-morning', plannedHours: 4, status: 'pending' }),
+  mk({ planId: 'p3', employeeId: 'e1', date: '2026-07-13', shiftId: 'sh-morning', plannedHours: 4, status: 'pending', suppressesAutoOT: true }),
   mk({ planId: 'p3', employeeId: 'e2', date: '2026-07-13', shiftId: 'sh-morning', plannedHours: 4, status: 'pending' }),
   mk({ planId: 'p3', employeeId: 'e3', date: '2026-07-14', shiftId: 'sh-morning', plannedHours: 3, status: 'pending' }),
 ];
 
-// ── P4 · Approved — Night dispatch coverage (next week Jul 19–23) ────────────────
+// ── P4 · Approved — Night dispatch coverage (next week Jul 19–23, not yet worked) ─
 const p4Records: OvertimeRecord[] = [
-  mk({ planId: 'p4', employeeId: 'e4', date: '2026-07-20', shiftId: 'sh-night', plannedHours: 3, status: 'approved' }),
+  mk({ planId: 'p4', employeeId: 'e4', date: '2026-07-20', shiftId: 'sh-night', plannedHours: 3, status: 'approved', suppressesAutoOT: true }),
   mk({ planId: 'p4', employeeId: 'e5', date: '2026-07-21', shiftId: 'sh-night', plannedHours: 3, otType: 'toil', status: 'approved' }),
 ];
 
@@ -242,6 +250,35 @@ export const seedRequests: OvertimeRequest[] = [
     captureSource: 'punch',
   },
 ];
+
+// ── Overtime beyond plan — auto-raised where actual exceeded the approved plan ───
+// Yousef (e3) worked 3.5h against a 2h approved plan → +1.5h excess, held for its own approval.
+const yousefOverRec = p1Records[2];
+export const seedBeyondPlan: OvertimeBeyondPlan[] = [
+  {
+    id: 'bp-seed-1',
+    employeeId: yousefOverRec.employeeId,
+    date: yousefOverRec.date,
+    planId: yousefOverRec.planId,
+    recordId: yousefOverRec.id,
+    approvedHours: yousefOverRec.plannedHours, // 2
+    actualHours: yousefOverRec.actualHours ?? yousefOverRec.plannedHours, // 3.5
+    excessHours: (yousefOverRec.actualHours ?? 0) - yousefOverRec.plannedHours, // 1.5
+    otType: yousefOverRec.otType, // inherits the plan's comp type
+    rateMultiplier: yousefOverRec.dayType === 'rest' ? otPolicy.restMultiplier : otPolicy.normalMultiplier,
+    status: 'pending',
+    source: 'auto_create',
+    createdOn: '2026-07-09',
+  },
+];
+
+// Excess-handling config (PRD §2.5) — how OT worked beyond plan is raised & treated.
+export const excessConfig: ExcessConfig = {
+  mode: 'auto_create',
+  toleranceBufferMinutes: 5,
+  inheritsCompType: true,
+  countsTowardCaps: true,
+};
 
 // Per-employee mock figures for the non-OT sheet column groups (production context).
 export const sheetMock: SheetMock[] = [

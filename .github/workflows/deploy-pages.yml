@@ -14,11 +14,19 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+# Publishes two bundles to one Pages site:
+#   /jisr-overtime-planning/       → the pre-PRD build (pinned commit PREV_SHA) — the original test link
+#   /jisr-overtime-planning/v2/    → the current (PRD-aligned) build — the new test link
+env:
+  PREV_SHA: aecda55   # last pre-PRD main commit; served at the site root
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/configure-pages@v5
       - uses: actions/setup-node@v4
         with:
@@ -28,11 +36,37 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Test
         run: npm test
-      - name: Build
-        run: npm run build
+
+      # New (PRD-aligned) version → /v2/
+      - name: Build v2 (current)
+        run: VITE_BASE_PATH=/jisr-overtime-planning/v2/ npm run build
+      - name: Stage v2
+        run: |
+          rm -rf site && mkdir -p site
+          mv dist site/v2
+
+      # Original version → root, rebuilt from the pinned pre-PRD commit
+      - name: Build root (previous)
+        continue-on-error: true
+        run: |
+          git worktree add ../prev "$PREV_SHA"
+          cd ../prev
+          npm install --no-audit --no-fund
+          npm run build
+          cd "$GITHUB_WORKSPACE"
+          cp -r ../prev/dist/. site/
+
+      # Guarantee the site root resolves even if the previous build failed
+      - name: Ensure root entry
+        run: |
+          if [ ! -f site/index.html ]; then
+            printf '<!doctype html><meta charset="utf-8"><title>Jisr OT</title><meta http-equiv="refresh" content="0; url=./v2/"><a href="./v2/">Go to the app →</a>' > site/index.html
+            cp site/index.html site/404.html
+          fi
+
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: site
 
   deploy:
     needs: build

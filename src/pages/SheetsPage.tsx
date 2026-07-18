@@ -12,25 +12,41 @@ import { useOTStore } from '../store';
 import { compileSheet, employeesWithOT } from '../lib/sheet';
 import { SheetTable } from '../components/sheet/SheetTable';
 import { PendingRequestsTable } from '../components/sheet/PendingRequestsTable';
+import { BeyondPlanTable } from '../components/sheet/BeyondPlanTable';
 import { SummaryPanel } from '../components/sheet/SummaryPanel';
 import { RetroactivesPanel } from '../components/sheet/RetroactivesPanel';
 
-type Tab = 'summary' | 'sheet' | 'preq' | 'retro';
+type Tab = 'summary' | 'sheet' | 'preq' | 'beyond' | 'retro';
 
 export const SheetsPage = () => {
-  const { employees, records, requests, plans, sheetMock, approveRequest, rejectRequest, captureRequest } =
-    useOTStore();
+  const {
+    employees,
+    records,
+    requests,
+    beyondPlan,
+    plans,
+    sheetMock,
+    features,
+    approveRequest,
+    rejectRequest,
+    captureRequest,
+    approveBeyondPlan,
+    rejectBeyondPlan,
+    captureBeyondPlan,
+  } = useOTStore();
   const toast = useToast();
   const [tab, setTab] = useState<Tab>('sheet');
   const [flashEmployeeId, setFlashEmployeeId] = useState<string | null>(null);
 
   const recordList = useMemo(() => Object.values(records), [records]);
   const requestList = useMemo(() => Object.values(requests), [requests]);
+  const beyondList = useMemo(() => Object.values(beyondPlan), [beyondPlan]);
   const rows = useMemo(
-    () => compileSheet(employees, recordList, requestList, sheetMock),
-    [employees, recordList, requestList, sheetMock],
+    () => compileSheet(employees, recordList, requestList, beyondList, sheetMock),
+    [employees, recordList, requestList, beyondList, sheetMock],
   );
   const pending = requestList.filter((r) => r.status === 'pending');
+  const beyondPending = beyondList.filter((b) => b.status === 'pending');
 
   const flash = (employeeId: string) => {
     setFlashEmployeeId(employeeId);
@@ -55,10 +71,33 @@ export const SheetsPage = () => {
     setTab('preq');
   };
 
+  const onApproveBeyond = (id: string) => {
+    const bp = beyondPlan[id];
+    approveBeyondPlan(id);
+    const name = employees.find((e) => e.id === bp?.employeeId)?.name ?? 'Employee';
+    toast.success('Excess approved', `${name} · +${bp ? bp.excessHours : ''}h added to the sheet`);
+    if (bp) flash(bp.employeeId);
+    setTimeout(() => setTab('sheet'), 650);
+  };
+  const onRejectBeyond = (id: string) => {
+    rejectBeyondPlan(id);
+    toast.warning('Excess rejected', 'Payable stays capped at the approved plan.');
+  };
+  const onCaptureBeyond = () => {
+    const id = captureBeyondPlan();
+    if (!id) {
+      toast.info('Nothing to capture', 'No approved plan without a pending excess item right now.');
+      return;
+    }
+    toast.info('Overtime beyond plan raised', 'Worked over the approved plan — approve the excess to pay it.');
+    setTab('beyond');
+  };
+
   const TABS: { key: Tab; label: string; count?: number }[] = [
     { key: 'summary', label: 'Summary' },
     { key: 'sheet', label: 'Sheet' },
     { key: 'preq', label: 'Pending Requests', count: pending.length },
+    { key: 'beyond', label: 'Overtime beyond plan', count: beyondPending.length },
     { key: 'retro', label: 'Retroactives' },
   ];
 
@@ -78,9 +117,16 @@ export const SheetsPage = () => {
         description="Where approved overtime lands for payroll — planned plans and approved requests post here."
         border={false}
         actions={
-          <Button variant="primary" size="sm" onClick={onCapture}>
-            <Zap className="size-4" /> Capture unplanned OT from a punch
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={onCapture}>
+              <Zap className="size-4" /> Capture unplanned OT from a punch
+            </Button>
+            {features.captureBeyondPlan && (
+              <Button variant="primary" size="sm" onClick={onCaptureBeyond}>
+                <Zap className="size-4" /> Capture overtime beyond plan
+              </Button>
+            )}
+          </div>
         }
       />
 
@@ -141,15 +187,32 @@ export const SheetsPage = () => {
         )}
         {tab === 'sheet' && (
           <>
-            <SheetTable rows={rows} employees={employees} plans={plans} requests={requests} flashEmployeeId={flashEmployeeId} />
+            <SheetTable
+              rows={rows}
+              employees={employees}
+              plans={plans}
+              requests={requests}
+              beyondPlan={beyondPlan}
+              flashEmployeeId={flashEmployeeId}
+            />
             <p className="text-11 text-app-faint">
-              <Zap className="inline size-3 text-accent-ink" /> The Approved-overtime columns fill live from
-              approved plans and approved requests — hover a dot to see the source.
+              <Zap className="inline size-3 text-accent-ink" /> Approved-overtime columns show payable =
+              min(worked, approved), filled live from approved plans, requests and beyond-plan excess — hover
+              a dot to see the source.
             </p>
           </>
         )}
         {tab === 'preq' && (
           <PendingRequestsTable requests={pending} employees={employees} onApprove={onApprove} onReject={onReject} />
+        )}
+        {tab === 'beyond' && (
+          <BeyondPlanTable
+            items={beyondPending}
+            employees={employees}
+            plans={plans}
+            onApprove={onApproveBeyond}
+            onReject={onRejectBeyond}
+          />
         )}
         {tab === 'retro' && <RetroactivesPanel />}
       </div>

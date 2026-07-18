@@ -1,9 +1,9 @@
 // Step 3 — per-employee × per-day hours matrix (brief §7.2).
 // Rest-day columns tinted + 2× label; normal 1.5×. Live per-row + grand-total cost.
-// Quick-fill; per-row Paid/TOIL; over-cap amber flag.
+// Quick-fill; per-row Paid/TOIL. Hours cap is not enforced this release (PRD Open Q4b).
 
 import { useMemo, useState } from 'react';
-import { NumberInput, SegmentedControl, Button, Avatar, Banner } from '@jisr-hr/ds-web';
+import { NumberInput, SegmentedControl, Button, Avatar } from '@jisr-hr/ds-web';
 import type { Employee, OTPolicy, OTType } from '../../types';
 import { dayTypeForDate } from '../../lib/records';
 import { cost, multiplierFor } from '../../lib/cost';
@@ -120,7 +120,6 @@ export const HoursMatrix = ({
           <tbody>
             {employees.map((emp) => {
               const row = rowOf(emp.id);
-              const overCap = rowHours(emp) > policy.weeklyCapSoft;
               return (
                 <tr key={emp.id} className="border-b border-app-line dark:border-app-line-dark last:border-b-0">
                   <td className="px-3 py-2 sticky left-0 bg-app-card dark:bg-app-card-dark">
@@ -162,7 +161,6 @@ export const HoursMatrix = ({
                     <div className="font-medium text-app-ink dark:text-app-ink-dark tabular-nums">{money(rowCost(emp))}</div>
                     <div className="text-11 text-app-faint">
                       {fmtH(rowHours(emp))}
-                      {overCap && <span className="text-warn-ink"> · over cap</span>}
                     </div>
                   </td>
                 </tr>
@@ -171,12 +169,6 @@ export const HoursMatrix = ({
           </tbody>
         </table>
       </div>
-
-      {employees.some((e) => rowHours(e) > policy.weeklyCapSoft) && (
-        <Banner appearance="warning" emphasis="mid">
-          One or more employees exceed the {policy.weeklyCapSoft}h weekly soft cap. This is a warning, not a blocker.
-        </Banner>
-      )}
 
       <div className="flex items-center justify-between px-1">
         <div className="text-11 text-app-faint">

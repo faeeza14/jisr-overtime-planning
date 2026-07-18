@@ -1,8 +1,12 @@
 // Scheduler OT chip — status-aware (Plan → Approve). Chips stop at approved.
 // draft: grey dashed · pending: amber · approved: violet.
+// An approved chip that overrides automatic OT that day shows a ⚡ "auto OT suppressed" marker (PRD FR-2).
 
+import { Zap } from 'lucide-react';
 import type { OvertimeRecord } from '../../types';
 import { fmtH } from '../../lib/format';
+
+const suppressesAuto = (r: OvertimeRecord): boolean => r.status === 'approved' && !!r.suppressesAutoOT;
 
 const styleFor = (r: OvertimeRecord): string => {
   switch (r.status) {
@@ -20,6 +24,8 @@ const styleFor = (r: OvertimeRecord): string => {
 };
 
 const labelFor = (r: OvertimeRecord): string => `+${fmtH(r.plannedHours)} · ${r.status}`;
+const titleFor = (r: OvertimeRecord): string =>
+  suppressesAuto(r) ? `${labelFor(r)} · auto OT suppressed` : labelFor(r);
 
 export const OTChip = ({
   record,
@@ -31,7 +37,7 @@ export const OTChip = ({
   <button
     type="button"
     onClick={onClick}
-    title={labelFor(record)}
+    title={titleFor(record)}
     className={[
       'inline-flex items-center gap-1 w-full rounded-md px-1.5 py-0.5 text-[10px] font-medium truncate transition',
       'cursor-pointer hover:opacity-80 focus-ring',
@@ -39,5 +45,8 @@ export const OTChip = ({
     ].join(' ')}
   >
     <span className="truncate">{labelFor(record)}</span>
+    {suppressesAuto(record) && (
+      <Zap className="size-2.5 shrink-0" aria-label="auto OT suppressed" />
+    )}
   </button>
 );

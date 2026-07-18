@@ -4,9 +4,11 @@ import type {
   AuditDelta,
   CostCentre,
   Employee,
+  ExcessConfig,
   FeatureConfig,
   Group,
   OTPolicy,
+  OvertimeBeyondPlan,
   OvertimePlan,
   OvertimeRecord,
   OvertimeRequest,
@@ -19,8 +21,10 @@ import type {
 import {
   costCentres as seedCostCentres,
   employees as seedEmployees,
+  excessConfig as seedExcessConfig,
   groups as seedGroups,
   otPolicy as seedPolicy,
+  seedBeyondPlan,
   seedPlans,
   seedRecords,
   seedRequests,
@@ -58,9 +62,11 @@ type OTState = {
   plans: Record<string, OvertimePlan>;
   records: Record<string, OvertimeRecord>;
   requests: Record<string, OvertimeRequest>;
+  beyondPlan: Record<string, OvertimeBeyondPlan>;
   sheetMock: SheetMock[];
   audit: AuditDelta[];
   features: FeatureConfig;
+  excess: ExcessConfig;
   ui: { currentDate: string };
 
   // plan lifecycle (Plan → Approve)
@@ -70,15 +76,22 @@ type OTState = {
   submitForApproval: (planId: string) => void;
   approvePlan: (planId: string, edits?: RecordEdit[]) => void;
   rejectPlan: (planId: string, comment: string) => void;
+  voidApproval: (planId: string) => void; // editing an approved plan sends it back to pending
 
   // unplanned OT request lane (posts to the sheet on approve)
   approveRequest: (requestId: string) => void;
   rejectRequest: (requestId: string) => void;
   captureRequest: () => string; // demo: capture an unplanned OT from a punch
 
+  // overtime-beyond-plan lane (excess worked over an approved plan)
+  approveBeyondPlan: (id: string) => void;
+  rejectBeyondPlan: (id: string) => void;
+  captureBeyondPlan: () => string; // demo: capture OT worked beyond an approved plan
+
   // config
   setFeature: (key: keyof FeatureConfig, on: boolean) => void;
   updatePolicy: (patch: Partial<OTPolicy>) => void;
+  updateExcessConfig: (patch: Partial<ExcessConfig>) => void;
 };
 
 const setRecordStatus = (
@@ -100,12 +113,15 @@ export const useOTStore = create<OTState>((set) => ({
   plans: indexById(seedPlans),
   records: indexById(seedRecords),
   requests: indexById(seedRequests),
+  beyondPlan: indexById(seedBeyondPlan),
   sheetMock: seedSheetMock,
   audit: [],
   features: {
     shiftScheduleApproval: true,
     overtimePlanner: true,
+    captureBeyondPlan: true,
   },
+  excess: seedExcessConfig,
   ui: { currentDate: TODAY_ISO },
 
   createDraftPlan: (input) => {
@@ -179,7 +195,7 @@ export const useOTStore = create<OTState>((set) => ({
             by: CURRENT_USER,
             at: tsNow(),
           });
-          // Deferred reconcile: approved hours are payable as-is.
+          // Approve the edited plan hours; payable is derived later as min(worked, approved).
           records[edit.recordId] = { ...r, plannedHours: edit.plannedHours, payableHours: edit.plannedHours };
         }
       }
@@ -195,6 +211,20 @@ export const useOTStore = create<OTState>((set) => ({
       return {
         records: setRecordStatus(s.records, plan.recordIds, 'rejected'),
         plans: { ...s.plans, [planId]: { ...plan, status: 'rejected', rejectComment: comment } },
+      };
+    }),
+
+  // Editing an approved plan voids its approval — plan + records revert to pending for re-approval.
+  voidApproval: (planId) =>
+    set((s) => {
+      const plan = s.plans[planId];
+      if (!plan) return s;
+      return {
+        records: setRecordStatus(s.records, plan.recordIds, 'pending'),
+        plans: {
+          ...s.plans,
+          [planId]: { ...plan, status: 'pending', submittedBy: CURRENT_USER, approvalStep: 'Finance → Top management' },
+        },
       };
     }),
 
@@ -233,7 +263,59 @@ export const useOTStore = create<OTState>((set) => ({
     return id;
   },
 
+  // Approving beyond-plan excess adds excessHours to the sheet's Approved-overtime columns.
+  approveBeyondPlan: (id) =>
+    set((s) => {
+      const bp = s.beyondPlan[id];
+      if (!bp) return s;
+      return { beyondPlan: { ...s.beyondPlan, [id]: { ...bp, status: 'approved' } } };
+    }),
+
+  // Rejecting leaves the plan capped at its approved hours (excess is not paid).
+  rejectBeyondPlan: (id) =>
+    set((s) => {
+      const bp = s.beyondPlan[id];
+      if (!bp) return s;
+      return { beyondPlan: { ...s.beyondPlan, [id]: { ...bp, status: 'rejected' } } };
+    }),
+
+  // Demo: an employee worked beyond an approved plan → raise a pending beyond-plan excess item.
+  captureBeyondPlan: () => {
+    const id = `bp-${nanoid(6)}`;
+    let created = '';
+    set((s) => {
+      const withPending = new Set(
+        Object.values(s.beyondPlan).filter((b) => b.status === 'pending').map((b) => b.employeeId),
+      );
+      const rec = Object.values(s.records).find(
+        (r) => r.status === 'approved' && !withPending.has(r.employeeId),
+      );
+      if (!rec) return s;
+      const excessHours = 1.5;
+      const bp: OvertimeBeyondPlan = {
+        id,
+        employeeId: rec.employeeId,
+        date: rec.date,
+        planId: rec.planId,
+        recordId: rec.id,
+        approvedHours: rec.plannedHours,
+        actualHours: rec.plannedHours + excessHours,
+        excessHours,
+        otType: s.excess.inheritsCompType ? rec.otType : 'paid', // inherits the plan's comp type
+        rateMultiplier: rec.dayType === 'rest' ? s.policy.restMultiplier : s.policy.normalMultiplier,
+        status: 'pending',
+        source: s.excess.mode === 'employee_submits' ? 'employee' : 'auto_create',
+        createdOn: TODAY_ISO,
+      };
+      created = id;
+      return { beyondPlan: { ...s.beyondPlan, [id]: bp } };
+    });
+    return created;
+  },
+
   setFeature: (key, on) => set((s) => ({ features: { ...s.features, [key]: on } })),
 
   updatePolicy: (patch) => set((s) => ({ policy: { ...s.policy, ...patch } })),
+
+  updateExcessConfig: (patch) => set((s) => ({ excess: { ...s.excess, ...patch } })),
 }));
